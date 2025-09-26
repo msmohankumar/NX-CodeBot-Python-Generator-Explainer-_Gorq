@@ -1,8 +1,7 @@
 streamlit
-streamlit
-chardet
-groq
+numpy
 plotly
-
-
-
+chardet
+python-dotenv
+groq
+openai
