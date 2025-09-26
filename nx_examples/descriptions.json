@@ -1,0 +1,6 @@
+{
+  "block.py": "Creates a rectangular block with specified dimensions (width, depth, height).",
+  "AddChamferToExisting_robust.py": "Robust script to apply chamfer to the first solid body using various options and log output.",
+  "unite.py": "Unites two selected bodies into one solid body.",
+  "fillet.py": "Applies fillets with specified radius to selected edges."
+}
