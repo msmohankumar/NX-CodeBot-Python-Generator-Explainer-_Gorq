@@ -1,0 +1,5 @@
+streamlit
+streamlit
+chardet
+groq
+
