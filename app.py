@@ -6,17 +6,11 @@ import json
 import hashlib
 from groq import Groq
 
-# ✅ Handle API key (Streamlit secrets first, fallback to .env for local dev)
-api_key = None
-try:
-    api_key = st.secrets["GROQ_API_KEY"]
-except Exception:
-    from dotenv import load_dotenv
-    load_dotenv()
-    api_key = os.getenv("GROQ_API_KEY")
+# ✅ Get API key (use st.secrets on Streamlit Cloud, fallback to os.environ for local dev)
+api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 
 if not api_key:
-    st.error("❌ GROQ_API_KEY not found. Please add it to Streamlit Secrets or a .env file.")
+    st.error("❌ GROQ_API_KEY not found. Please add it to Streamlit Secrets (for cloud) or set it as an environment variable (for local).")
     st.stop()
 
 # Initialize Groq client
