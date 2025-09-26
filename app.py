@@ -8,24 +8,31 @@ import numpy as np
 import plotly.graph_objects as go
 from groq import Groq
 from dotenv import load_dotenv
+from openai import OpenAI  # Gemini-compatible SDK
 
-# Load environment variables from .env file
+# -----------------------------
+# Load environment variables
+# -----------------------------
 load_dotenv()
 
-# Retrieve Groq API key securely
-api_key = os.getenv("GROQ_API_KEY")
-if not api_key:
-    st.error("GROQ_API_KEY not set in environment variables. Please add it to your .env file.")
+groq_api_key = os.getenv("GROQ_API_KEY")
+gemini_api_key = os.getenv("OPENAI_API_KEY")  # For Gemini image generation
+
+if not groq_api_key:
+    st.error("❌ GROQ_API_KEY not set. Please add it to your .env file.")
     st.stop()
 
-# Initialize Groq client
-client = Groq(api_key=api_key)
+# Initialize clients
+groq_client = Groq(api_key=groq_api_key)
+gemini_client = OpenAI(api_key=gemini_api_key) if gemini_api_key else None
 
 EXAMPLES_DIR = "nx_examples"
 IMAGES_DIR = "images"
 CACHE_FILE = "description_cache.json"
 
-# Load or initialize explanation cache
+# -----------------------------
+# Load or initialize cache
+# -----------------------------
 if os.path.exists(CACHE_FILE):
     with open(CACHE_FILE, "r", encoding="utf-8") as f:
         description_cache = json.load(f)
@@ -36,17 +43,15 @@ example_files = [f for f in os.listdir(EXAMPLES_DIR) if f.endswith(".py")]
 
 st.set_page_config(page_title="🤖 NX CodeBot", layout="wide")
 
-st.title("🤖 NX CodeBot (Python Generator + Explainer + 3D Preview)")
-st.write("Generate NXOpen Python code, get AI explanation (with formulas), and visualize in 3D.")
+st.title("🤖 NX CodeBot (Code + Explanation + 3D Preview + AI Image)")
+st.write("Generate NXOpen Python code, get AI explanation with formulas, see 3D preview, and AI-rendered CAD image.")
 
 example_selected = st.selectbox("Select an operation:", example_files)
+param_input = st.text_input("Optional Parameters (comma-separated, e.g., 100,100,50)")
 
-st.write("Optional Parameters (comma-separated, e.g., 100,100,50) for templates with placeholders.")
-param_input = st.text_input("Enter parameters separated by comma")
-
-# --------------------------
-# Utilities
-# --------------------------
+# -----------------------------
+# Utility Functions
+# -----------------------------
 def read_script_auto_encode(path):
     with open(path, "rb") as f:
         raw_data = f.read()
@@ -75,7 +80,7 @@ def get_code_description(code_snippet):
         {"role": "user", "content": f"Explain this NXOpen Python code:\n{code_snippet}"}
     ]
     try:
-        chat_completion = client.chat.completions.create(
+        chat_completion = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages
         )
@@ -95,14 +100,18 @@ def replace_params_in_code(code, param_list):
         code = code.replace(f"{{param{i}}}", param_val)
     return code
 
-# --------------------------
-# 3D Shape Visualization
-# --------------------------
+# -----------------------------
+# Plotly 3D Visualization
+# -----------------------------
 def plot_block(x=100, y=100, z=100):
-    X, Y, Z = np.meshgrid([0, x], [0, y], [0, z])
     fig = go.Figure(data=[go.Mesh3d(
-        x=X.flatten(), y=Y.flatten(), z=Z.flatten(),
-        color='lightblue', opacity=0.5
+        x=[0, x, x, 0, 0, x, x, 0],
+        y=[0, 0, y, y, 0, 0, y, y],
+        z=[0, 0, 0, 0, z, z, z, z],
+        i=[0, 0, 0, 1, 1, 2, 4, 5, 6, 7, 3, 2],
+        j=[1, 2, 3, 5, 6, 6, 5, 6, 7, 4, 6, 7],
+        k=[2, 3, 0, 6, 7, 4, 0, 1, 2, 5, 7, 4],
+        opacity=0.5, color="lightblue"
     )])
     fig.update_layout(scene=dict(aspectmode="data"))
     return fig
@@ -118,9 +127,8 @@ def plot_cylinder(radius=50, height=100):
     return fig
 
 def render_3d_preview(filename, params):
-    """Simple shape detection based on filename."""
     if "block" in filename.lower():
-        dims = [int(p) if p.isdigit() else 50 for p in params[:3]] + [0,0,0]
+        dims = [int(p) if p.isdigit() else 50 for p in params[:3]]
         return plot_block(dims[0], dims[1], dims[2])
     elif "cylinder" in filename.lower():
         r = int(params[0]) if len(params) > 0 and params[0].isdigit() else 50
@@ -129,9 +137,25 @@ def render_3d_preview(filename, params):
     else:
         return None
 
-# --------------------------
+# -----------------------------
+# Gemini AI Image Generation
+# -----------------------------
+def generate_ai_image(prompt):
+    if not gemini_client:
+        return None
+    try:
+        response = gemini_client.images.generate(
+            model="gemini-1.5-mini",  # Gemini image model
+            prompt=prompt,
+            size="512x512"
+        )
+        return response.data[0].url
+    except Exception as e:
+        return None
+
+# -----------------------------
 # Main Action
-# --------------------------
+# -----------------------------
 if st.button("Generate Code + Explain + Preview"):
     example_path = os.path.join(EXAMPLES_DIR, example_selected)
     try:
@@ -159,6 +183,17 @@ if st.button("Generate Code + Explain + Preview"):
             else:
                 st.info("No 3D preview available for this operation.")
 
+            # Gemini AI Rendered Image
+            if gemini_client:
+                prompt = f"3D CAD-style render of {example_selected.replace('.py','')} with parameters {params}. Engineering drawing style, Siemens NX look."
+                img_url = generate_ai_image(prompt)
+                if img_url:
+                    st.image(img_url, caption="Gemini AI Rendered Part")
+                else:
+                    st.info("AI image not available.")
+            else:
+                st.info("⚠️ Gemini AI image generation requires OPENAI_API_KEY.")
+
     except FileNotFoundError:
         st.error(f"❌ File not found: {example_selected}")
     except Exception as e:
@@ -173,6 +208,7 @@ st.markdown(
     3. Click **Generate** to:
        - View generated Python code
        - Get AI explanation with formulas
-       - See a 3D preview of the shape
+       - See a 3D preview (basic geometry)
+       - View a Gemini AI-rendered CAD image
     """
 )
