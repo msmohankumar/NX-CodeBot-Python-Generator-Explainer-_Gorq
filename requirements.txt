@@ -5,3 +5,5 @@ chardet
 python-dotenv
 groq
 openai
+fpdf
+requests
